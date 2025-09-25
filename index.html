@@ -26,6 +26,17 @@
             align-items: center;
         }
         
+        @media (max-width: 768px) {
+            .controls {
+                padding: 25px 35px;
+                gap: 40px;
+                border-radius: 25px;
+                bottom: 20px;
+                transform: translateX(-50%) scale(1.2);
+                transform-origin: center bottom;
+            }
+        }
+        
         .control-group {
             display: flex;
             flex-direction: column;
@@ -99,10 +110,105 @@
             font-size: 14px;
             letter-spacing: 2px;
         }
+        
+        .info-icon {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            width: 32px;
+            height: 32px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-family: Georgia, serif;
+            font-size: 16px;
+            font-style: italic;
+            cursor: help;
+            transition: all 0.3s ease;
+        }
+        
+        .info-icon:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #f5f5dc;
+            transform: scale(1.1);
+        }
+        
+        .tooltip {
+            position: absolute;
+            top: 45px;
+            right: -10px;
+            width: 320px;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 16px 20px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 12px;
+            line-height: 1.5;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .info-icon:hover .tooltip {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .tooltip h4 {
+            margin: 0 0 8px 0;
+            color: #f5f5dc;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .tooltip-section {
+            margin-bottom: 10px;
+        }
+        
+        .tooltip-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .controls-list {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        /* Dynamic cursor styles */
+        .cursor-rotate { cursor: grab; }
+        .cursor-rotate:active { cursor: grabbing; }
+        .cursor-zoom { cursor: zoom-in; }
+        .cursor-pan { cursor: move; }
     </style>
 </head>
 <body>
     <div class="loading" id="loading">LOADING MODEL...</div>
+    
+    <div class="info-icon">
+        i
+        <div class="tooltip">
+            <h4>Interactive 3D Demo — Cartilage-Seated Trimming Guide</h4>
+            <div class="tooltip-section">
+                A right hemipelvis with patient-specific guide positioned over the acetabulum. The planned resection is visualized by the trimming plane; the detached rim segment hovers posteriorly showing the depth and arc to be removed.
+            </div>
+            <div class="tooltip-section controls-list">
+                <strong>Navigation:</strong><br>
+                • Left click + drag: Rotate<br>
+                • Right click + drag: Pan<br>
+                • Scroll wheel: Zoom<br>
+                • Use controls below for lighting & rotation
+            </div>
+        </div>
+    </div>
+    
     <div class="controls">
         <div class="control-group">
             <label>Light</label>
@@ -156,6 +262,31 @@
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.rotateSpeed = 0.5;
+        
+        // Dynamic cursor changes
+        const canvas = renderer.domElement;
+        canvas.classList.add('cursor-rotate');
+        
+        // Update cursor based on interaction
+        canvas.addEventListener('wheel', () => {
+            canvas.className = 'cursor-zoom';
+            setTimeout(() => canvas.className = 'cursor-rotate', 200);
+        });
+        
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) { // Left click
+                canvas.className = 'cursor-rotate';
+            } else if (e.button === 2) { // Right click
+                canvas.className = 'cursor-pan';
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            canvas.className = 'cursor-rotate';
+        });
+        
+        // Prevent right-click context menu
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
         let mesh;
         let autoRotate = { x: 0, y: 0 };
