@@ -3,11 +3,116 @@
 <head>
     <title>STL Viewer</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
         canvas { display: block; }
+        
+        .controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 20px 30px;
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        label {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        input[type="range"] {
+            width: 100px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #f5f5dc;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            background: #f5f5dc;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .rotation-ball {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(245, 245, 220, 0.3), rgba(245, 245, 220, 0.05));
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            cursor: grab;
+            position: relative;
+            touch-action: none;
+        }
+        
+        .rotation-ball:active {
+            cursor: grabbing;
+        }
+        
+        .rotation-ball::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px;
+            height: 8px;
+            background: #f5f5dc;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        
+        .divider {
+            width: 1px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+        }
     </style>
 </head>
 <body>
+    <div class="controls">
+        <div class="control-group">
+            <label>Light</label>
+            <input type="range" id="lightIntensity" min="0" max="200" value="100">
+        </div>
+        <div class="divider"></div>
+        <div class="control-group">
+            <label>Rotation</label>
+            <div class="rotation-ball" id="rotationBall"></div>
+        </div>
+    </div>
     <script type="importmap">
         {
             "imports": {
@@ -23,22 +128,37 @@
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
 
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(1, 1, 1);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0x404040));
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 5, 5);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+        
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+        scene.add(ambientLight);
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
 
+        let mesh;
+        let rotationSpeed = { x: 0, y: 0 };
+        
         const loader = new STLLoader();
         loader.load('https://github.com/nekonomicus/stl-viewer-app/releases/download/v1.0/Example.stl', geometry => {
-            const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
-            const mesh = new THREE.Mesh(geometry, material);
+            const material = new THREE.MeshPhongMaterial({ 
+                color: 0xf5f5dc, // Bone color
+                specular: 0x222222,
+                shininess: 25
+            });
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
             
             geometry.computeBoundingBox();
             const center = new THREE.Vector3();
@@ -53,8 +173,76 @@
             scene.add(mesh);
         });
 
+        // UI Controls
+        const lightSlider = document.getElementById('lightIntensity');
+        lightSlider.addEventListener('input', (e) => {
+            const intensity = e.target.value / 100;
+            directionalLight.intensity = intensity;
+            ambientLight.intensity = intensity * 0.5;
+        });
+        
+        // Rotation ball control
+        const rotationBall = document.getElementById('rotationBall');
+        let isDragging = false;
+        let startX, startY;
+        
+        rotationBall.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - startX;
+                const deltaY = e.clientY - startY;
+                rotationSpeed.x = deltaY * 0.001;
+                rotationSpeed.y = deltaX * 0.001;
+                startX = e.clientX;
+                startY = e.clientY;
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+        
+        // Touch support for rotation ball
+        rotationBall.addEventListener('touchstart', (e) => {
+            isDragging = true;
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            e.preventDefault();
+        });
+        
+        document.addEventListener('touchmove', (e) => {
+            if (isDragging) {
+                const deltaX = e.touches[0].clientX - startX;
+                const deltaY = e.touches[0].clientY - startY;
+                rotationSpeed.x = deltaY * 0.001;
+                rotationSpeed.y = deltaX * 0.001;
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            }
+        });
+        
+        document.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+
         function animate() {
             requestAnimationFrame(animate);
+            
+            if (mesh) {
+                mesh.rotation.x += rotationSpeed.x;
+                mesh.rotation.y += rotationSpeed.y;
+                
+                // Slow down rotation over time
+                rotationSpeed.x *= 0.95;
+                rotationSpeed.y *= 0.95;
+            }
+            
             controls.update();
             renderer.render(scene, camera);
         }
