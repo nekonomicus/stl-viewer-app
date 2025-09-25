@@ -1,15 +1,24 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const zlib = require('zlib');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.static('.'));
 
-// Serve STL file if it exists, otherwise serve a placeholder
+// Serve STL file - check for compressed version first
 app.get('/model.stl', (req, res) => {
+    const stlGzPath = path.join(__dirname, 'model.stl.gz');
     const stlPath = path.join(__dirname, 'model.stl');
-    if (fs.existsSync(stlPath)) {
+    
+    if (fs.existsSync(stlGzPath)) {
+        // Serve decompressed gzipped STL
+        res.type('application/octet-stream');
+        fs.createReadStream(stlGzPath)
+            .pipe(zlib.createGunzip())
+            .pipe(res);
+    } else if (fs.existsSync(stlPath)) {
         res.sendFile(stlPath);
     } else {
         // Create a simple cube STL as placeholder
