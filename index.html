@@ -6,7 +6,7 @@
         body { 
             margin: 0; 
             overflow: hidden; 
-            background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%);
+            background: #0a0a0a;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
         canvas { display: block; }
@@ -57,15 +57,6 @@
             cursor: pointer;
         }
         
-        input[type="range"]::-moz-range-thumb {
-            width: 12px;
-            height: 12px;
-            background: #f5f5dc;
-            border-radius: 50%;
-            cursor: pointer;
-            border: none;
-        }
-        
         .rotation-ball {
             width: 60px;
             height: 60px;
@@ -74,24 +65,23 @@
             border: 1px solid rgba(255, 255, 255, 0.2);
             cursor: grab;
             position: relative;
-            touch-action: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .rotation-ball:active {
             cursor: grabbing;
+            background: radial-gradient(circle at 30% 30%, rgba(245, 245, 220, 0.5), rgba(245, 245, 220, 0.1));
         }
         
-        .rotation-ball::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+        .rotation-indicator {
             width: 8px;
             height: 8px;
             background: #f5f5dc;
             border-radius: 50%;
             pointer-events: none;
+            transition: transform 0.1s;
         }
         
         .divider {
@@ -99,9 +89,20 @@
             height: 40px;
             background: rgba(255, 255, 255, 0.1);
         }
+        
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #f5f5dc;
+            font-size: 14px;
+            letter-spacing: 2px;
+        }
     </style>
 </head>
 <body>
+    <div class="loading" id="loading">LOADING MODEL...</div>
     <div class="controls">
         <div class="control-group">
             <label>Light</label>
@@ -110,9 +111,12 @@
         <div class="divider"></div>
         <div class="control-group">
             <label>Rotation</label>
-            <div class="rotation-ball" id="rotationBall"></div>
+            <div class="rotation-ball" id="rotationBall">
+                <div class="rotation-indicator" id="rotationIndicator"></div>
+            </div>
         </div>
     </div>
+    
     <script type="importmap">
         {
             "imports": {
@@ -127,64 +131,102 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
 
+        // Lighting
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(5, 5, 5);
+        directionalLight.position.set(5, 10, 5);
         directionalLight.castShadow = true;
         scene.add(directionalLight);
         
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
         scene.add(ambientLight);
+
+        // Add light helper to see direction
+        const lightPivot = new THREE.Object3D();
+        scene.add(lightPivot);
+        lightPivot.add(directionalLight);
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
+        controls.rotateSpeed = 0.5;
 
         let mesh;
-        let rotationSpeed = { x: 0, y: 0 };
+        let autoRotate = { x: 0, y: 0 };
         
         const loader = new STLLoader();
-        loader.load('/model.stl', geometry => {
-            const material = new THREE.MeshPhongMaterial({ 
-                color: 0xf5f5dc, // Bone color
-                specular: 0x222222,
-                shininess: 25
-            });
-            mesh = new THREE.Mesh(geometry, material);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-            
-            geometry.computeBoundingBox();
-            const center = new THREE.Vector3();
-            geometry.boundingBox.getCenter(center);
-            mesh.position.sub(center);
-            
-            const size = new THREE.Vector3();
-            geometry.boundingBox.getSize(size);
-            const maxDim = Math.max(size.x, size.y, size.z);
-            camera.position.z = maxDim * 2;
-            
-            scene.add(mesh);
-        });
+        console.log('Loading STL from /model.stl...');
+        
+        loader.load('/model.stl', 
+            (geometry) => {
+                console.log('STL loaded successfully');
+                document.getElementById('loading').style.display = 'none';
+                
+                // Material with bone color
+                const material = new THREE.MeshPhongMaterial({ 
+                    color: 0xf5f5dc,
+                    specular: 0x111111,
+                    shininess: 30
+                });
+                
+                mesh = new THREE.Mesh(geometry, material);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                
+                // Center the geometry
+                geometry.computeBoundingBox();
+                const center = new THREE.Vector3();
+                geometry.boundingBox.getCenter(center);
+                geometry.translate(-center.x, -center.y, -center.z);
+                
+                // Scale to fit view
+                const size = new THREE.Vector3();
+                geometry.boundingBox.getSize(size);
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 100 / maxDim;
+                mesh.scale.set(scale, scale, scale);
+                
+                scene.add(mesh);
+                
+                // Position camera
+                camera.position.set(150, 150, 150);
+                camera.lookAt(0, 0, 0);
+            },
+            (xhr) => {
+                const percentComplete = (xhr.loaded / xhr.total) * 100;
+                console.log(percentComplete + '% loaded');
+            },
+            (error) => {
+                console.error('Error loading STL:', error);
+                document.getElementById('loading').textContent = 'ERROR LOADING MODEL';
+            }
+        );
 
         // UI Controls
         const lightSlider = document.getElementById('lightIntensity');
+        let lightAngle = 0;
+        
         lightSlider.addEventListener('input', (e) => {
             const intensity = e.target.value / 100;
             directionalLight.intensity = intensity;
-            ambientLight.intensity = intensity * 0.5;
+            
+            // Also rotate light direction
+            lightAngle = (e.target.value / 200) * Math.PI * 2;
+            lightPivot.rotation.y = lightAngle;
         });
         
-        // Rotation ball control
+        // Rotation ball control with visual feedback
         const rotationBall = document.getElementById('rotationBall');
+        const rotationIndicator = document.getElementById('rotationIndicator');
         let isDragging = false;
         let startX, startY;
+        let ballX = 0, ballY = 0;
         
         rotationBall.addEventListener('mousedown', (e) => {
             isDragging = true;
@@ -197,8 +239,16 @@
             if (isDragging) {
                 const deltaX = e.clientX - startX;
                 const deltaY = e.clientY - startY;
-                rotationSpeed.x = deltaY * 0.001;
-                rotationSpeed.y = deltaX * 0.001;
+                
+                // Update rotation speed
+                autoRotate.y = deltaX * 0.002;
+                autoRotate.x = deltaY * 0.002;
+                
+                // Visual feedback - move indicator
+                ballX = Math.max(-20, Math.min(20, ballX + deltaX * 0.2));
+                ballY = Math.max(-20, Math.min(20, ballY + deltaY * 0.2));
+                rotationIndicator.style.transform = `translate(${ballX}px, ${ballY}px)`;
+                
                 startX = e.clientX;
                 startY = e.clientY;
             }
@@ -207,40 +257,24 @@
         document.addEventListener('mouseup', () => {
             isDragging = false;
         });
-        
-        // Touch support for rotation ball
-        rotationBall.addEventListener('touchstart', (e) => {
-            isDragging = true;
-            startX = e.touches[0].clientX;
-            startY = e.touches[0].clientY;
-            e.preventDefault();
-        });
-        
-        document.addEventListener('touchmove', (e) => {
-            if (isDragging) {
-                const deltaX = e.touches[0].clientX - startX;
-                const deltaY = e.touches[0].clientY - startY;
-                rotationSpeed.x = deltaY * 0.001;
-                rotationSpeed.y = deltaX * 0.001;
-                startX = e.touches[0].clientX;
-                startY = e.touches[0].clientY;
-            }
-        });
-        
-        document.addEventListener('touchend', () => {
-            isDragging = false;
-        });
 
         function animate() {
             requestAnimationFrame(animate);
             
             if (mesh) {
-                mesh.rotation.x += rotationSpeed.x;
-                mesh.rotation.y += rotationSpeed.y;
+                mesh.rotation.x += autoRotate.x;
+                mesh.rotation.y += autoRotate.y;
                 
-                // Slow down rotation over time
-                rotationSpeed.x *= 0.95;
-                rotationSpeed.y *= 0.95;
+                // Dampen rotation
+                autoRotate.x *= 0.98;
+                autoRotate.y *= 0.98;
+            }
+            
+            // Return ball indicator to center
+            if (!isDragging) {
+                ballX *= 0.9;
+                ballY *= 0.9;
+                rotationIndicator.style.transform = `translate(${ballX}px, ${ballY}px)`;
             }
             
             controls.update();
